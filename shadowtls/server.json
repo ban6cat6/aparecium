@@ -1,0 +1,42 @@
+{
+    "inbounds": [
+        {
+            "type": "shadowtls",
+            "listen": "127.0.0.1",
+            "listen_port": 10443,
+            "handshake": {
+                "server": "wechat.com",
+                "server_port": 443
+            },
+            "strict_mode": true,
+            "users": [
+                {
+                    "name": "default",
+                    "password": "fe5U9BEauVz+hEO7ziyilPSG4GA1Bwi/YDErPvj0IrY="
+                }
+            ],
+            "version": 3,
+            "detour": "shadowsocks"
+        },
+        {
+            "listen": "127.0.0.1",
+            "listen_port": 0,
+            "method": "2022-blake3-aes-256-gcm",
+            "password": "9wqaBamhkm6ePcF0aCWla1Pnc7YUDFUis0Qr6YGvmDg=",
+            "tag": "shadowsocks",
+            "type": "shadowsocks",
+            "users": [
+                {
+                    "name": "default",
+                    "password": "X3IetbrYOTGgt4rsj2SZG8d3Wzg77Apokwp/TqAAZSw="
+                }
+            ]
+        }
+    ],
+    "outbounds": [
+        {
+            "tag": "direct",
+            "type": "direct"
+        }
+    ]
+}

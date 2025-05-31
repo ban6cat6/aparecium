@@ -1,0 +1,37 @@
+{
+    "inbounds": [
+        {
+            "port": 10443,
+            "protocol": "vless",
+            "settings": {
+                "clients": [
+                    {
+                        "id": "54d209be-2e89-4ddc-8b58-e6ca8bf24604",
+                        "flow": "xtls-rprx-vision"
+                    }
+                ],
+                "decryption": "none"
+            },
+            "streamSettings": {
+                "network": "tcp",
+                "security": "reality",
+                "realitySettings": {
+                    "dest": "wechat.com:443",
+                    "serverNames": [
+                        "wechat.com"
+                    ],
+                    "privateKey": "wDLCylSA87HIHq2PKjYzjjbduZiSESVQmNre4IexY0I",
+                    "shortIds": [
+                        "5a7cf960a73cd603"
+                    ]
+                }
+            }
+        }
+    ],
+    "outbounds": [
+        {
+            "tag": "direct",
+            "protocol": "freedom"
+        }
+    ]
+}

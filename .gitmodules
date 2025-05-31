@@ -1,0 +1,3 @@
+[submodule "utls"]
+	path = utls
+	url = git@github.com:ban6cat6/utls.git

@@ -1,0 +1,40 @@
+{
+    "inbounds": [
+        {
+            "protocol": "socks",
+            "listen": "127.0.0.1",
+            "port": 10080
+        }
+    ],
+    "outbounds": [
+        {
+            "tag": "default",
+            "protocol": "vless",
+            "settings": {
+                "vnext": [
+                    {
+                        "address": "127.0.0.1",
+                        "port": 10444,
+                        "users": [
+                            {
+                                "id": "54d209be-2e89-4ddc-8b58-e6ca8bf24604",
+                                "encryption": "none",
+                                "flow": "xtls-rprx-vision"
+                            }
+                        ]
+                    }
+                ]
+            },
+            "streamSettings": {
+                "network": "tcp",
+                "security": "reality",
+                "realitySettings": {
+                    "fingerprint": "chrome",
+                    "serverName": "wechat.com",
+                    "publicKey": "8AmoOVhePWJZZv9jkFqXfUlPMC2Y5NYxIk-I8Aic9DA",
+                    "shortId": "5a7cf960a73cd603"
+                }
+            }
+        }
+    ]
+}

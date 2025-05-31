@@ -1,0 +1,35 @@
+{
+    "inbounds": [
+        {
+            "tag": "default",
+            "type": "socks",
+            "listen": "127.0.0.1",
+            "listen_port": 10080
+        }
+    ],
+    "outbounds": [
+        {
+            "tag": "shadowsocks",
+            "type": "shadowsocks",
+            "detour": "shadowtls",
+            "method": "2022-blake3-aes-256-gcm",
+            "password": "9wqaBamhkm6ePcF0aCWla1Pnc7YUDFUis0Qr6YGvmDg=:X3IetbrYOTGgt4rsj2SZG8d3Wzg77Apokwp/TqAAZSw=",
+        },
+        {
+            "tag": "shadowtls",
+            "type": "shadowtls",
+            "server": "127.0.0.1",
+            "server_port": 10444,
+            "version": 3,
+            "password": "fe5U9BEauVz+hEO7ziyilPSG4GA1Bwi/YDErPvj0IrY=",
+            "tls": {
+                "enabled": true,
+                "server_name": "wechat.com",
+                "utls": {
+                    "enabled": true,
+                    "fingerprint": "chrome"
+                }
+            }
+        }
+    ]
+}

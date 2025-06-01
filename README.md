@@ -119,7 +119,8 @@ Some servers, like those operated by [Google](https://www.google.com), do not se
    ```
 2. Launch Aparecium to intercept traffic between the proxy client and server:
    ```bash
-   go run ./main.go
+   # $protocol can be either "reality" or "shadowtls", default to "reality".
+   go run ./main.go -victim $protocol
    ```
 
 ### Probing the Server

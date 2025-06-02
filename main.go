@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"sync"
+	"sync/atomic"
 
 	"github.com/davecgh/go-spew/spew"
 	tls "github.com/refraction-networking/utls"
@@ -24,7 +25,7 @@ const (
 	recordHeaderLen = 5
 )
 
-func isVictimServerFinishedLen(l int) bool {
+func isVictimFinishedLen(l int) bool {
 	switch *victim {
 	case "shadowtls":
 		return l == 57 || l == 73
@@ -35,16 +36,17 @@ func isVictimServerFinishedLen(l int) bool {
 	}
 }
 
-type scanner struct {
+type upstreamScanner struct {
 	io.Reader
 	ticketsLens []int
 
 	buf            bytes.Buffer
 	status         int
 	finishedStatus int
+	clientFinished *atomic.Bool
 }
 
-func (s *scanner) Read(p []byte) (n int, err error) {
+func (s *upstreamScanner) Read(p []byte) (n int, err error) {
 	// Consume the incomplete record from the buffer first.
 	// We need to make sure we are reading at the record boundary.
 	if s.buf.Len() > 0 {
@@ -62,16 +64,64 @@ func (s *scanner) Read(p []byte) (n int, err error) {
 	for len(p) > 0 {
 		recordLen := int(p[3])<<8 + int(p[4])
 		switch {
-		case isVictimServerFinishedLen(recordLen):
+		case isVictimFinishedLen(recordLen):
 			s.status++
+		case s.status == 0 && s.clientFinished.Load():
+			s.status++
+			fallthrough
 		case s.status > 0 && s.status < s.finishedStatus:
-			ticketLen := recordLen - 17 // 1 byte record type + 16 bytes AEAD tag
-			if s.ticketsLens[s.status-1] != ticketLen {
-				fmt.Println("TLS camouflage connection detected")
+			dataLen := recordLen - 17 // 1 byte record type + 16 bytes AEAD tag
+			expectedLen := s.ticketsLens[s.status-1]
+			if dataLen != expectedLen {
+				// In case of Cloudflare, two tickets are batched in one record.
+				if dataLen != expectedLen*len(s.ticketsLens) {
+					fmt.Println("TLS camouflage connection detected")
+				}
 				s.status = s.finishedStatus
-			} else {
-				s.status++
+				return n, nil
 			}
+			s.status++
+		}
+		if l := recordHeaderLen + recordLen; l > len(p) {
+			need := make([]byte, l-len(p))
+			_, _ = io.ReadFull(s.Reader, need)
+			// Save the remaining bytes in the buffer, yield them in the following Read call
+			s.buf.Write(need)
+			return n, nil
+		} else {
+			p = p[l:]
+		}
+	}
+
+	return n, nil
+}
+
+type downstreamScanner struct {
+	io.Reader
+	clientFinished *atomic.Bool
+
+	buf bytes.Buffer
+}
+
+func (s *downstreamScanner) Read(p []byte) (n int, err error) {
+	// Consume the incomplete record from the buffer first.
+	// We need to make sure we are reading at the record boundary.
+	if s.buf.Len() > 0 {
+		n, _ = s.buf.Read(p)
+		return n, nil
+	}
+	n, err = s.Reader.Read(p)
+	if err != nil {
+		return n, err
+	}
+	if s.clientFinished.Load() {
+		return n, nil
+	}
+	p = p[:n]
+	for len(p) > 0 {
+		recordLen := int(p[3])<<8 + int(p[4])
+		if isVictimFinishedLen(recordLen) {
+			s.clientFinished.CompareAndSwap(false, true)
 		}
 		if l := recordHeaderLen + recordLen; l > len(p) {
 			need := make([]byte, l-len(p))
@@ -115,12 +165,14 @@ func getTicketsLens(uconn *tls.UConn) ([]int, error) {
 }
 
 func scan(conn net.Conn, upstream net.Conn, rawCH []byte, ticketsLens []int) error {
+	var clientFinished atomic.Bool
 	var upstreamReader io.Reader = upstream
 	if len(ticketsLens) > 0 {
-		upstreamReader = &scanner{
+		upstreamReader = &upstreamScanner{
 			Reader:         upstream,
 			ticketsLens:    ticketsLens,
 			finishedStatus: len(ticketsLens) + 1,
+			clientFinished: &clientFinished,
 		}
 	} else {
 		fmt.Println("No session tickets found, unable to determine victim protocol")
@@ -142,7 +194,10 @@ func scan(conn net.Conn, upstream net.Conn, rawCH []byte, ticketsLens []int) err
 
 	go func() {
 		defer wg.Done()
-		io.Copy(upstream, conn)
+		io.Copy(upstream, &downstreamScanner{
+			Reader:         conn,
+			clientFinished: &clientFinished,
+		})
 	}()
 
 	return nil

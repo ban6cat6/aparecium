@@ -35,19 +35,13 @@ func isVictimServerFinishedLen(l int) bool {
 	}
 }
 
-const (
-	_ = iota
-	statusWaitingTicket0
-	_
-	statusFinished
-)
-
 type scanner struct {
 	io.Reader
 	ticketsLens []int
 
-	buf    bytes.Buffer
-	status int
+	buf            bytes.Buffer
+	status         int
+	finishedStatus int
 }
 
 func (s *scanner) Read(p []byte) (n int, err error) {
@@ -61,7 +55,7 @@ func (s *scanner) Read(p []byte) (n int, err error) {
 	if err != nil {
 		return n, err
 	}
-	if s.status == statusFinished {
+	if s.status == s.finishedStatus {
 		return n, nil
 	}
 	p = p[:n]
@@ -69,17 +63,15 @@ func (s *scanner) Read(p []byte) (n int, err error) {
 		recordLen := int(p[3])<<8 + int(p[4])
 		switch {
 		case isVictimServerFinishedLen(recordLen):
-			s.status = statusWaitingTicket0
-		case s.status > 0 && s.status < statusFinished:
+			s.status++
+		case s.status > 0 && s.status < s.finishedStatus:
 			ticketLen := recordLen - 17 // 1 byte record type + 16 bytes AEAD tag
-			if s.ticketsLens[0] != ticketLen {
+			if s.ticketsLens[s.status-1] != ticketLen {
 				fmt.Println("TLS camouflage connection detected")
-				s.status = statusFinished
+				s.status = s.finishedStatus
 			} else {
 				s.status++
 			}
-		case s.status == statusFinished:
-			return n, nil
 		}
 		if l := recordHeaderLen + recordLen; l > len(p) {
 			need := make([]byte, l-len(p))
@@ -122,13 +114,20 @@ func getTicketsLens(uconn *tls.UConn) ([]int, error) {
 	return uconn.ConnectionState().SessionTicketsLens, nil
 }
 
-func scan(conn net.Conn, rawCH []byte, ticketsLens []int) error {
-	upstream, err := net.Dial("tcp", *remote)
-	if err != nil {
-		return err
+func scan(conn net.Conn, upstream net.Conn, rawCH []byte, ticketsLens []int) error {
+	var upstreamReader io.Reader = upstream
+	if len(ticketsLens) > 0 {
+		upstreamReader = &scanner{
+			Reader:         upstream,
+			ticketsLens:    ticketsLens,
+			finishedStatus: len(ticketsLens) + 1,
+		}
+	} else {
+		fmt.Println("No session tickets found, unable to determine victim protocol")
 	}
+
 	// Replay the ClientHello to the upstream server
-	_, err = upstream.Write(rawCH)
+	_, err := upstream.Write(rawCH)
 	if err != nil {
 		return err
 	}
@@ -138,10 +137,7 @@ func scan(conn net.Conn, rawCH []byte, ticketsLens []int) error {
 	defer wg.Wait()
 	go func() {
 		defer wg.Done()
-		io.Copy(conn, &scanner{
-			Reader:      upstream,
-			ticketsLens: ticketsLens,
-		})
+		io.Copy(conn, upstreamReader)
 	}()
 
 	go func() {
@@ -176,11 +172,13 @@ func handle(conn net.Conn) error {
 		return err
 	}
 
+	clientHello := tls.UnmarshalClientHello(append([]byte{}, payload...))
 	probeConn, err := net.Dial("tcp", *remote)
 	if err != nil {
 		return err
 	}
 	uconn := tls.UClient(probeConn, &tls.Config{
+		ServerName:         clientHello.ServerName,
 		InsecureSkipVerify: true,
 	}, tls.HelloCustom)
 	if err := uconn.ApplyPreset(chSpec); err != nil {
@@ -194,13 +192,12 @@ func handle(conn net.Conn) error {
 		return err
 	}
 
-	if len(ticketsLens) == 0 {
-		fmt.Println("No session tickets found, unable to determine victim protocol")
-		return nil
+	upstream, err := net.Dial("tcp", *remote)
+	if err != nil {
+		return err
 	}
-
 	fmt.Println("Starting scan...")
-	if err := scan(conn, clientHelloRecord, ticketsLens); err != nil {
+	if err := scan(conn, upstream, clientHelloRecord, ticketsLens); err != nil {
 		spew.Dump(err)
 	}
 	return nil

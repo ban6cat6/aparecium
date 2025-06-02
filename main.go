@@ -25,7 +25,7 @@ const (
 	recordHeaderLen = 5
 )
 
-func isVictimFinishedLen(l int) bool {
+func isVictimServerFinished(l int) bool {
 	switch *victim {
 	case "shadowtls":
 		return l == 57 || l == 73
@@ -34,6 +34,10 @@ func isVictimFinishedLen(l int) bool {
 	default:
 		return false
 	}
+}
+
+func isClientFinishedLen(l int) bool {
+	return l == 53 || l == 69
 }
 
 type upstreamScanner struct {
@@ -64,7 +68,7 @@ func (s *upstreamScanner) Read(p []byte) (n int, err error) {
 	for len(p) > 0 {
 		recordLen := int(p[3])<<8 + int(p[4])
 		switch {
-		case isVictimFinishedLen(recordLen):
+		case isVictimServerFinished(recordLen):
 			s.status++
 		case s.status == 0 && s.clientFinished.Load():
 			s.status++
@@ -120,7 +124,7 @@ func (s *downstreamScanner) Read(p []byte) (n int, err error) {
 	p = p[:n]
 	for len(p) > 0 {
 		recordLen := int(p[3])<<8 + int(p[4])
-		if isVictimFinishedLen(recordLen) {
+		if isClientFinishedLen(recordLen) {
 			s.clientFinished.CompareAndSwap(false, true)
 		}
 		if l := recordHeaderLen + recordLen; l > len(p) {
